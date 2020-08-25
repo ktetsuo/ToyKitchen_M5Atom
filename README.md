@@ -9,7 +9,5 @@ IoTおままごとキッチン
 
 ## 動画
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/SONMhCoxYf4" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-
-https://www.youtube.com/watch?v=SONMhCoxYf4
+[![https://www.youtube.com/watch?v=SONMhCoxYf4](https://img.youtube.com/vi/SONMhCoxYf4/0.jpg)](https://www.youtube.com/watch?v=SONMhCoxYf4)
 
