@@ -1,11 +1,14 @@
 #include <M5Atom.h>
 #include <math.h>
+#include "image.h"
 
 const int VOLUME_PIN = 33;
 const int VOLUME_SW = 23;
 const int LED_NUM = 4;
 const int LED_PIN[LED_NUM] = {25, 21, 19, 22};
 const int LED_CH[LED_NUM] = {0, 1, 2, 3};
+
+int state = 0;
 
 void setup() {
   M5.begin(true, false, true);
@@ -23,6 +26,37 @@ void setup() {
 }
 
 void loop() {
+  M5.update();
+  if (M5.Btn.wasPressed()) {
+    state = (state + 1) % 2;
+    const unsigned char *imageTable[] = {
+      image_0,
+      image_1,
+      image_2,
+      image_3,
+    };
+    M5.dis.displaybuff((uint8_t*)imageTable[state], 0, 0);
+    delay(1000);
+  }
+  switch (state) {
+    case 0:
+      state0Loop();
+      break;
+    case 1:
+      state1Loop();
+      break;
+    case 2:
+      state2Loop();
+      break;
+    case 3:
+      state3Loop();
+      break;
+    default:
+      break;
+  }
+}
+
+void state0Loop() {
   if (digitalRead(VOLUME_SW) == LOW) {
     int vol = analogRead(VOLUME_PIN);
     Serial.println(vol);
@@ -38,7 +72,7 @@ void loop() {
     int power = 25.0 * vol_linear / 64.0 + 0.5; // 0 - 25
     Serial.println(power);
     for (int i = 0; i < 25; i++) {
-      if(i < power) {
+      if (i < power) {
         M5.dis.drawpix(i, 0x00ff00);  // GRB
       } else {
         M5.dis.drawpix(i, 0x000000);
@@ -51,6 +85,58 @@ void loop() {
     }
   }
   delay(100);
+}
+void state1Loop() {
+  static unsigned long lastms = 0;
+  static int count = 0;
+  unsigned long ms = millis();
+  if (digitalRead(VOLUME_SW) == HIGH) {
+    ledcWrite(LED_CH[0], 0);
+    ledcWrite(LED_CH[1], 0);
+    ledcWrite(LED_CH[2], 0);
+    ledcWrite(LED_CH[3], 0);
+    lastms = ms - 1000;
+    return;
+  }
+  int vol = analogRead(VOLUME_PIN);
+  float vol_linear = sqrt(vol); // 0~63.99
+  float hz = vol_linear / 64 * 19 + 1; // 1~20
+  if (ms - lastms > (1000.0 / hz + 0.5)) {
+    lastms = ms;
+    count = (count + 1) % 4;
+    switch (count) {
+      case 0:
+        ledcWrite(LED_CH[0], 4095);
+        ledcWrite(LED_CH[1], 0);
+        ledcWrite(LED_CH[2], 0);
+        ledcWrite(LED_CH[3], 0);
+        break;
+      case 1:
+        ledcWrite(LED_CH[0], 0);
+        ledcWrite(LED_CH[1], 4095);
+        ledcWrite(LED_CH[2], 0);
+        ledcWrite(LED_CH[3], 0);
+        break;
+      case 2:
+        ledcWrite(LED_CH[0], 0);
+        ledcWrite(LED_CH[1], 0);
+        ledcWrite(LED_CH[2], 4095);
+        ledcWrite(LED_CH[3], 0);
+        break;
+      case 3:
+        ledcWrite(LED_CH[0], 0);
+        ledcWrite(LED_CH[1], 0);
+        ledcWrite(LED_CH[2], 0);
+        ledcWrite(LED_CH[3], 4095);
+        break;
+    }
+  }
+}
+void state2Loop() {
+
+}
+void state3Loop() {
+
 }
 
 float randomRate() {
