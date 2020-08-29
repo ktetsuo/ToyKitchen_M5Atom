@@ -1,5 +1,6 @@
 #include <M5Atom.h>
-#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
 #include <math.h>
 #include "image.h"
 
@@ -9,8 +10,23 @@ const int LED_NUM = 4;
 const int LED_PIN[LED_NUM] = {25, 21, 19, 22};
 const int LED_CH[LED_NUM] = {0, 1, 2, 3};
 
+const char* mqttBrokerAddr = "mqtt.beebotte.com";
+const char* mqttUserName = ""; // beebotte channel token
+const char* mqttPassword = NULL;
+
+const int mqttPort = 8883;
+const char* mqttClientID = "ToyKitchen";
+
 int state = 0;
 int lastWiFiStatus;
+float volume;
+boolean volumeSw;
+float lastVolume;
+float lastVolumeSw;
+unsigned long lastPubTime = 0;
+
+WiFiClientSecure wifiClient;
+PubSubClient mqttClient(mqttBrokerAddr, mqttPort, wifiClient);
 
 void setup() {
   M5.begin(true, false, true);
@@ -25,12 +41,18 @@ void setup() {
   }
   Serial.begin(115200);
   Serial.println("Hello!");
-//  WiFi.begin("**SSID**", "**PASSWORD**");
+  // WiFi.begin("**SSID**", "**PASSWORD**");
   WiFi.begin();
   lastWiFiStatus = WiFi.status();
+  mqttClient.setCallback(mqttCallback);
+  lastVolume = readVolume();
+  lastVolumeSw = isVolumeSwOn();
 }
 
 void loop() {
+  unsigned long ms = millis();
+  volume = readVolume();
+  volumeSw = isVolumeSwOn();
   M5.update();
   int wifiStatus = WiFi.status();
   if (lastWiFiStatus != WL_CONNECTED && wifiStatus == WL_CONNECTED) {
@@ -41,6 +63,9 @@ void loop() {
     Serial.println("WiFi disconnected.");
   }
   lastWiFiStatus = wifiStatus;
+  mqttReConnect();
+  mqttClient.loop();
+  // M5Atomのボタンでモード切り替え
   if (M5.Btn.wasPressed()) {
     state = (state + 1) % 2;
     const unsigned char *imageTable[] = {
@@ -50,7 +75,19 @@ void loop() {
       image_3,
     };
     M5.dis.displaybuff((uint8_t*)imageTable[state], 0, 0);
+    mqttClient.publish("toykitchen/mode", String(state).c_str());
     delay(1000);
+  }
+  // ボリュームが変わっていて前回の送信から一定時間立っていたらPublish
+  if (!isNear(volume, lastVolume) && ms - lastPubTime >= 100) {
+    mqttClient.publish("toykitchen/volume", String(volume).c_str());
+    lastPubTime = ms;
+    lastVolume = volume;
+  }
+  // ボリュームスイッチの状態が変わっていたらPublish
+  if (volumeSw != lastVolumeSw) {
+    mqttClient.publish("toykitchen/volume_sw", volumeSw ? "true" : "false");
+    lastVolumeSw = volumeSw;
   }
   switch (state) {
     case 0:
@@ -71,7 +108,7 @@ void loop() {
 }
 
 void state0Loop() {
-  if (isVolumeSwOn()) {
+  if (volumeSw) {
     float power = readVolume();
     for (int i = 0; i < LED_NUM; i++) {
       float rate = randomRate();
@@ -90,15 +127,13 @@ void state1Loop() {
   static unsigned long lastms = 0;
   static int count = 0;
   unsigned long ms = millis();
-  if (!isVolumeSwOn()) {
+  if (!volumeSw) {
     static const float power[LED_NUM] = {0, 0, 0, 0};
     fireLEDs(power);
     lastms = ms - 1000;
     return;
   }
-  int vol = analogRead(VOLUME_PIN);
-  float vol_linear = sqrt(vol); // 0~63.99
-  float hz = vol_linear / 64 * 19 + 1; // 1~20
+  float hz = volume * 19 + 1; // 1~20
   if (ms - lastms > (1000.0 / hz + 0.5)) {
     lastms = ms;
     count = (count + 1) % 4;
@@ -195,4 +230,42 @@ void displayPowerIndicator(float power) {
 }
 void displayClear() {
   M5.dis.clear();
+}
+
+void mqttReConnect() {
+  // 接続が切れた際に再接続する
+  static unsigned long lastFailedTime = 0;
+  static boolean lastConnect = false;
+  unsigned long t = millis();
+  if (!mqttClient.connected()) {
+    if (lastConnect || t - lastFailedTime >= 5000) {
+      if (mqttClient.connect(mqttClientID, mqttUserName, mqttPassword)) {
+        Serial.println("MQTT Connect OK.");
+        lastConnect = true;
+        mqttClient.subscribe("toykitchen/#");
+      } else {
+        Serial.print("MQTT Connect failed, rc=");
+        // http://pubsubclient.knolleary.net/api.html#state に state 一覧が書いてある
+        Serial.println(mqttClient.state());
+        lastConnect = false;
+        lastFailedTime = t;
+      }
+    }
+  }
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  // MQTTトピックが来たときに呼ばれる
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+boolean isNear(float n1, float n2) {
+  float diff = n2 - n1;
+  return diff < 0.01 && -0.01 < diff;
 }
