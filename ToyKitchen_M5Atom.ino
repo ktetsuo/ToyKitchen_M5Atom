@@ -1,4 +1,5 @@
 #include <M5Atom.h>
+#include <WiFi.h>
 #include <math.h>
 #include "image.h"
 
@@ -9,6 +10,7 @@ const int LED_PIN[LED_NUM] = {25, 21, 19, 22};
 const int LED_CH[LED_NUM] = {0, 1, 2, 3};
 
 int state = 0;
+int lastWiFiStatus;
 
 void setup() {
   M5.begin(true, false, true);
@@ -23,10 +25,22 @@ void setup() {
   }
   Serial.begin(115200);
   Serial.println("Hello!");
+//  WiFi.begin("**SSID**", "**PASSWORD**");
+  WiFi.begin();
+  lastWiFiStatus = WiFi.status();
 }
 
 void loop() {
   M5.update();
+  int wifiStatus = WiFi.status();
+  if (lastWiFiStatus != WL_CONNECTED && wifiStatus == WL_CONNECTED) {
+    Serial.println("WiFi connected.");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+  } else if (lastWiFiStatus == WL_CONNECTED && wifiStatus != WL_CONNECTED) {
+    Serial.println("WiFi disconnected.");
+  }
+  lastWiFiStatus = wifiStatus;
   if (M5.Btn.wasPressed()) {
     state = (state + 1) % 2;
     const unsigned char *imageTable[] = {
